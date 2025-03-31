@@ -1,0 +1,22 @@
+Phrase               Token IDs                                Decoded Tokens
+--------------------------------------------------------------------------------
+unconscious          [409, 19877]                             un conscious
+wheelchair           [22830, 17892]                           wheel chair
+Snapchat             [50, 37252, 20057]                       S nap chat
+umbrella             [449, 2672, 3505]                        um bre lla
+cabinet              [66, 455, 21370]                         c ab inet
+hospital             [71, 2763, 1686]                         h osp ital
+Ipod                 [40, 43388]                              I pod
+window               [12199, 305]                             wind ow
+paragraph            [2181, 559, 2662]                        par ag raph
+sentence             [49315, 655]                             sent ence
+stroke               [42706]                                  stroke
+left                 [41761]                                  left
+froze                [69, 340, 1381]                          f ro ze
+trip                 [83, 8400]                               t rip
+Cinderella           [34, 471, 42842]                         C ind erella
+breakfast            [13225, 7011]                            break fast
+once                 [26015]                                  once
+boiling              [1763, 4883]                             bo iling
+sonny                [3015, 1634]                             son ny
+jelly                [73, 7442]                               j elly
