@@ -1,8 +1,5 @@
-# Ignore a specific folder
-data/
-
 # Ignore all folders with a specific name (anywhere in the repository)
-**/data/
+**/aphasia/
 
 # Ignore specific file types
 *.mp4
