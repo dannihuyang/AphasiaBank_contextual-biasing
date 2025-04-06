@@ -14,7 +14,7 @@ def extract_errors(filepath):
     Returns:
     list: List of dictionaries containing error information
     """
-    errors_list = []  # Renamed to avoid confusion with the variable used in the loop
+    errors_list = []
     
     try:
         with open(filepath, 'r', encoding='utf-8') as file:
@@ -25,17 +25,14 @@ def extract_errors(filepath):
                 # Check if the line contains utterances by the participant
                 if line.startswith('*PAR:'):
                     # Find all timestamps in the line
-                    timestamp_pattern = r'(\d+_\d+)'
+                    timestamp_pattern = r'\d+_\d+'
                     timestamps = re.findall(timestamp_pattern, line)
                     
                     if not timestamps:
                         continue
                     
-                    # Set the timestamp range for the entire utterance
-                    if len(timestamps) >= 2:
-                        timestamp = f"{timestamps[0]}_{timestamps[-1]}"
-                    else:
-                        timestamp = timestamps[0]
+                    # Set the timestamp for the utterance
+                    timestamp = timestamps[-1]  # Use the last timestamp found
                     
                     # Find errors in the line
                     # Format: word@u [: target] [* error_type]
@@ -43,13 +40,18 @@ def extract_errors(filepath):
                     error_matches = re.findall(error_pattern, line)
                     
                     for error_match in error_matches:
-                        pronunciation = error_match[0]  # This is a tuple, not a dict
-                        # pronunciation = error_match[0].replace('@u', '')
+                        pronunciation = error_match[0]
                         target = error_match[1]
                         error_type = error_match[2]
                         
                         # Extract the surrounding context (the whole utterance)
                         utterance = line.strip().replace('*PAR:', '').strip()
+                        
+                        # Remove the timestamp from the end of the utterance
+                        # Split by the timestamp and take everything before it
+                        parts = utterance.split(timestamp)
+                        if len(parts) > 1:
+                            utterance = parts[0].strip()
                         
                         errors_list.append({
                             'timestamp': timestamp,
@@ -57,7 +59,7 @@ def extract_errors(filepath):
                             'target': target,
                             'error_type': error_type,
                             'utterance': utterance,
-                            'filename': os.path.basename(filepath)
+                            'filename': os.path.basename(filepath).split('.')[0]
                         })
     
     except Exception as e:
@@ -81,7 +83,7 @@ def get_error_type_classification(error_type):
         'p:m': 'phonemic paraphasia',
         'p:w': 'word-level phonological error',
         'n:k': 'neologism with known target',
-        'n:uk': 'unknown neologism',
+        'n:uk': 'neologism with unknown target',
         's:r': 'semantic relation error',
         's:ur': 'unrelated semantic error',
         's:r:gc:pro': 'gender confusion pronoun error',
