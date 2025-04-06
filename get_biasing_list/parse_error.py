@@ -4,17 +4,17 @@ import os
 import glob
 import sys
 
-def extract_phonetic_errors(filepath):
+def extract_errors(filepath):
     """
-    Extract phonetic errors from AphasiaBank .kwal.cex files
+    Extract errors from AphasiaBank .kwal.cex files
     
     Parameters:
     filepath (str): Path to the .kwal.cex file
     
     Returns:
-    list: List of dictionaries containing phonetic error information
+    list: List of dictionaries containing error information
     """
-    phonetic_errors = []
+    errors_list = []  # Renamed to avoid confusion with the variable used in the loop
     
     try:
         with open(filepath, 'r', encoding='utf-8') as file:
@@ -37,21 +37,21 @@ def extract_phonetic_errors(filepath):
                     else:
                         timestamp = timestamps[0]
                     
-                    # Find phonetic errors in the line
+                    # Find errors in the line
                     # Format: word@u [: target] [* error_type]
                     error_pattern = r'(\w+@u)\s+\[:\s+([^\]]+)\]\s+\[\*\s+([^\]]+)\]'
-                    errors = re.findall(error_pattern, line)
+                    error_matches = re.findall(error_pattern, line)
                     
-                    for error in errors:
-                        pronunciation = error[0] 
-                        # pronunciation = error[0].replace('@u', '')
-                        target = error[1]
-                        error_type = error[2]
+                    for error_match in error_matches:
+                        pronunciation = error_match[0]  # This is a tuple, not a dict
+                        # pronunciation = error_match[0].replace('@u', '')
+                        target = error_match[1]
+                        error_type = error_match[2]
                         
                         # Extract the surrounding context (the whole utterance)
                         utterance = line.strip().replace('*PAR:', '').strip()
                         
-                        phonetic_errors.append({
+                        errors_list.append({
                             'timestamp': timestamp,
                             'pronunciation': pronunciation,
                             'target': target,
@@ -63,7 +63,7 @@ def extract_phonetic_errors(filepath):
     except Exception as e:
         print(f"Error processing {filepath}: {str(e)}")
     
-    return phonetic_errors
+    return errors_list
 
 def get_error_type_classification(error_type):
     """
@@ -92,14 +92,14 @@ def get_error_type_classification(error_type):
 
 def process_directory(directory_path, output_path=None):
     """
-    Process all .kwal.cex files in a directory and extract phonetic errors with classifications
+    Process all .kwal.cex files in a directory and extract errors with classifications
     
     Parameters:
     directory_path (str): Path to directory containing .kwal.cex files
-    output_path (str, optional): Path to save the output Excel file
+    output_path (str, optional): Path to save the output CSV file
     
     Returns:
-    pandas.DataFrame: DataFrame containing phonetic error information with classifications
+    pandas.DataFrame: DataFrame containing error information with classifications
     """
     all_errors = []
     
@@ -114,7 +114,7 @@ def process_directory(directory_path, output_path=None):
     
     for kwal_file in kwal_files:
         print(f"Processing {kwal_file}...")
-        errors = extract_phonetic_errors(kwal_file)
+        errors = extract_errors(kwal_file)
         
         # Add error type classification
         for error in errors:
@@ -126,24 +126,31 @@ def process_directory(directory_path, output_path=None):
     # Create DataFrame
     df = pd.DataFrame(all_errors)
     
-    # Save to Excel if output path is provided
+    # Save to CSV if output path is provided
     if output_path:
-        df.to_excel(output_path, index=False)
-        print(f"Phonetic errors saved to {output_path}")
+        # Convert the output path to CSV if it's not already
+        if not output_path.endswith('.csv'):
+            output_path = output_path.rsplit('.', 1)[0] + '.csv'
+        
+        try:
+            df.to_csv(output_path, index=False, encoding='utf-8')
+            print(f"Errors saved to {output_path}")
+        except Exception as e:
+            print(f"Error saving to CSV: {str(e)}")
     
     return df
 
 if __name__ == "__main__":
     # Check if directory path is provided as command line argument
     if len(sys.argv) < 2:
-        print("Usage: python -m get_biasing_list.parse_error <directory_path> [output_file.xlsx]")
+        print("Usage: python -m get_biasing_list.parse_error <directory_path> [output_file.csv]")
         sys.exit(1)
     
     # Get directory path from command line
     directory_path = sys.argv[1]
     
     # Get output path from command line or use default
-    output_path = sys.argv[2] if len(sys.argv) > 2 else "phonetic_errors.xlsx"
+    output_path = sys.argv[2] if len(sys.argv) > 2 else "errors.csv"
     
     # Process the directory
     df = process_directory(directory_path, output_path)
