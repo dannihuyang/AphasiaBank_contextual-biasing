@@ -34,24 +34,32 @@ def extract_errors(filepath):
                     # Set the timestamp for the utterance
                     timestamp = timestamps[-1]  # Use the last timestamp found
                     
-                    # Find errors in the line
-                    # Format: word@u [: target] [* error_type]
-                    error_pattern = r'(\w+@u)\s+\[:\s+([^\]]+)\]\s+\[\*\s+([^\]]+)\]'
-                    error_matches = re.findall(error_pattern, line)
+                    # Extract the surrounding context (the whole utterance)
+                    utterance = line.strip().replace('*PAR:', '').strip()
                     
-                    for error_match in error_matches:
+                    # Remove the timestamp from the end of the utterance
+                    # Split by the timestamp and take everything before it
+                    parts = utterance.split(timestamp)
+                    if len(parts) > 1:
+                        utterance = parts[0].strip()
+                    
+                    # Find errors in the line - two patterns:
+                    
+                    # Pattern 1: For phonetic errors with @u notation
+                    # Format: word@u [: target] [* error_type]
+                    phonetic_pattern = r'([^\[\s]+@u)\s+\[:\s+([^\]]+)\]\s+\[\*\s+([^\]]+)\]'
+                    phonetic_matches = re.findall(phonetic_pattern, line)
+                    
+                    # Pattern 2: For regular word errors
+                    # Format: word [: target] [* error_type]
+                    word_pattern = r'(\b[^\[\s]+\b)\s+\[:\s+([^\]]+)\]\s+\[\*\s+([^\]]+)\]'
+                    word_matches = re.findall(word_pattern, line)
+                    
+                    # Process phonetic errors
+                    for error_match in phonetic_matches:
                         pronunciation = error_match[0]
                         target = error_match[1]
                         error_type = error_match[2]
-                        
-                        # Extract the surrounding context (the whole utterance)
-                        utterance = line.strip().replace('*PAR:', '').strip()
-                        
-                        # Remove the timestamp from the end of the utterance
-                        # Split by the timestamp and take everything before it
-                        parts = utterance.split(timestamp)
-                        if len(parts) > 1:
-                            utterance = parts[0].strip()
                         
                         errors_list.append({
                             'timestamp': timestamp,
@@ -59,7 +67,28 @@ def extract_errors(filepath):
                             'target': target,
                             'error_type': error_type,
                             'utterance': utterance,
-                            'filename': os.path.basename(filepath).split('.')[0]
+                            'filename': os.path.basename(filepath).split('.')[0],
+                            'error_notation': 'phonetic transcription'  
+                        })
+                    
+                    # Process word errors
+                    for error_match in word_matches:
+                        pronunciation = error_match[0]
+                        target = error_match[1]
+                        error_type = error_match[2]
+                        
+                        # Skip if this is already captured as a phonetic error (has @u)
+                        if '@u' in pronunciation:
+                            continue
+                        
+                        errors_list.append({
+                            'timestamp': timestamp,
+                            'pronunciation': pronunciation,
+                            'target': target,
+                            'error_type': error_type,
+                            'utterance': utterance,
+                            'filename': os.path.basename(filepath).split('.')[0],
+                            'error_notation': 'word-level'  # Indicate this is a word error
                         })
     
     except Exception as e:
@@ -79,9 +108,9 @@ def get_error_type_classification(error_type):
     """
     # Define classification mapping
     classifications = {
-        'p:n': 'phonological substitution',
+        'p:n': 'phonological error resulting in a nonword',
         'p:m': 'phonemic paraphasia',
-        'p:w': 'word-level phonological error',
+        'p:w': 'phonemic paraphasia affecting a whole word',
         'n:k': 'neologism with known target',
         'n:uk': 'neologism with unknown target',
         's:r': 'semantic relation error',
