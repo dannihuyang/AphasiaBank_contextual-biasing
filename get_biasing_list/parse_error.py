@@ -118,13 +118,13 @@ def process_directory(directory_path, output_path=None):
         
         # Add error type classification
         for error in errors:
-            error['error_classification'] = get_error_type_classification(error['error_type'])
+            error['error_explanation'] = get_error_type_classification(error['error_type'])
         
         all_errors.extend(errors)
         print(f"  Found {len(errors)} errors in this file")
     
     # Create DataFrame
-    df = pd.DataFrame(all_errors)
+    new_df = pd.DataFrame(all_errors)
     
     # Save to CSV if output path is provided
     if output_path:
@@ -133,12 +133,30 @@ def process_directory(directory_path, output_path=None):
             output_path = output_path.rsplit('.', 1)[0] + '.csv'
         
         try:
-            df.to_csv(output_path, index=False, encoding='utf-8')
-            print(f"Errors saved to {output_path}")
+            # Check if the file already exists
+            if os.path.exists(output_path):
+                print(f"File {output_path} already exists. Appending new data...")
+                # Read existing CSV
+                existing_df = pd.read_csv(output_path, encoding='utf-8')
+                
+                # Concatenate with new data
+                combined_df = pd.concat([existing_df, new_df], ignore_index=True)
+                
+                # Remove duplicates if needed (based on all columns)
+                combined_df = combined_df.drop_duplicates()
+                
+                # Save the combined data
+                combined_df.to_csv(output_path, index=False, encoding='utf-8')
+                print(f"Appended {len(new_df)} new errors to {output_path}")
+                return combined_df
+            else:
+                # If file doesn't exist, create a new one
+                new_df.to_csv(output_path, index=False, encoding='utf-8')
+                print(f"Errors saved to {output_path}")
         except Exception as e:
             print(f"Error saving to CSV: {str(e)}")
     
-    return df
+    return new_df
 
 if __name__ == "__main__":
     # Check if directory path is provided as command line argument
