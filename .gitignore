@@ -1,5 +1,15 @@
+# Virtual Environment
+venv/
+env/
+ENV/
+.env
+.venv
+env.bak/
+venv.bak/
+
 # Ignore all folders with a specific name (anywhere in the repository)
 **/aphasia/
+venv/
 
 # Ignore specific file types
 *.mp4
