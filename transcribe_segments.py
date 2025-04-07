@@ -5,18 +5,18 @@ import argparse
 import glob
 from tqdm import tqdm
 import torch
+import whisper  # Import the whole module
 
-# Add the parent directory to Python path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-# Now you can import from your local whisper folder
-from whisper import load_model, load_audio, log_mel_spectrogram, DecodingOptions, decode, pad_or_trim
 from whisper.tokenizer import Tokenizer
 
 def transcribe_audio_segments(extracted_dir, csv_file, model_name="base", batch_size=10):
     """
     Transcribe extracted audio segments using Whisper and add results to CSV
     """
+    # Add device selection
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using device: {device}")
+    
     # Load the original CSV
     df = pd.read_csv(csv_file)
     
@@ -26,7 +26,7 @@ def transcribe_audio_segments(extracted_dir, csv_file, model_name="base", batch_
     
     # Load the Whisper model
     print(f"Loading Whisper model: {model_name}")
-    model = whisper.load_model(model_name)
+    model = whisper.load_model(model_name, device=device)
     
     # Find all extracted audio files
     all_segments = glob.glob(os.path.join(extracted_dir, "**/*.wav"), recursive=True)

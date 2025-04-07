@@ -4,8 +4,12 @@ from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Sequence, Tupl
 import numpy as np
 import torch
 import torch.nn.functional as F
+from torch import nn
+import contextlib
+import sys
 from torch import Tensor
 from torch.distributions import Categorical
+from torch.nn import Linear
 
 from .audio import CHUNK_LENGTH
 from .tokenizer import Tokenizer, get_tokenizer
@@ -121,7 +125,7 @@ class DecodingResult:
     language_probs: Optional[Dict[str, float]] = None
     tokens: List[int] = field(default_factory=list)
     text: str = ""
-    avg_logprob: float = np.nan
+    avg_logprob: float = np.nan 
     no_speech_prob: float = np.nan
     temperature: float = np.nan
     compression_ratio: float = np.nan
@@ -304,11 +308,13 @@ class BeamSearchDecoder(TokenDecoder):
         beam_size: int,
         eot: int,
         inference: Inference,
+        tokenizer: Tokenizer, # Added: tokenizer parameter
         patience: Optional[float] = None,
     ):
         self.beam_size = beam_size
         self.eot = eot
         self.inference = inference
+        self.tokenizer = tokenizer # Added: Store tokenizer as an instance attribute
         self.patience = patience or 1.0
         self.max_candidates: int = round(beam_size * self.patience)
         self.finished_sequences = None
@@ -331,19 +337,26 @@ class BeamSearchDecoder(TokenDecoder):
             self.finished_sequences = [{} for _ in range(n_audio)]
 
         logprobs = F.log_softmax(logits.float(), dim=-1)
+        print(f"logprobs.shape: {logprobs.shape}")
         next_tokens, source_indices, finished_sequences = [], [], []
         for i in range(n_audio):
+            
             scores, sources, finished = {}, {}, {}
 
             # STEP 1: calculate the cumulative log probabilities for possible candidates
             for j in range(self.beam_size):
+                print("************************************************")
                 idx = i * self.beam_size + j
                 prefix = tokens[idx].tolist()
-                for logprob, token in zip(*logprobs[idx].topk(self.beam_size + 1)):
+                print(f"for active beam {j+1}, prefix: {self.tokenizer.decode(prefix)}, sum_log: {sum_logprobs[idx]}")
+                for candidate_idx, (logprob, token) in enumerate(zip(*logprobs[idx].topk(self.beam_size + 1))): # Added index here 
                     new_logprob = (sum_logprobs[idx] + logprob).item()
+                    print(f"Expanded Candidate {candidate_idx + 1}/{self.beam_size + 1}: [{logprob:.2f}] -> '{self.tokenizer.decode([token.item()])}' => [{new_logprob:.2f}]")
                     sequence = tuple(prefix + [token.item()])
+                    # print(f"complete sequence: {' '.join(self.tokenizer.decode([t]) for t in prefix + [token.item()])}")
                     scores[sequence] = new_logprob
                     sources[sequence] = idx
+                print("************************************************")
 
             # STEP 2: rank the candidates and keep the top beam_size sequences for each audio
             saved = 0
@@ -358,8 +371,13 @@ class BeamSearchDecoder(TokenDecoder):
                     saved += 1
                     if saved == self.beam_size:
                         break
-
+            
             finished_sequences.append(finished)
+
+            print("\n=== Finished Sequences ===")
+            for seq, score in sorted(finished_sequences[i].items(), key=lambda x: x[1], reverse=True)[:self.beam_size]:  
+                decoded_seq = self.tokenizer.decode(seq)
+                print(f"Score: {score:.2f} | Text: {decoded_seq[:100]}")  # Show first 50 chars
 
         tokens = torch.tensor(next_tokens, device=tokens.device)
         self.inference.rearrange_kv_cache(source_indices)
@@ -545,7 +563,7 @@ class DecodingTask:
         # decoder: implements how to select the next tokens, given the autoregressive distribution
         if options.beam_size is not None:
             self.decoder = BeamSearchDecoder(
-                options.beam_size, tokenizer.eot, self.inference, options.patience
+                options.beam_size, tokenizer.eot, self.inference, tokenizer, options.patience
             )
         else:
             self.decoder = GreedyDecoder(options.temperature, tokenizer.eot)
@@ -681,9 +699,12 @@ class DecodingTask:
         n_batch = tokens.shape[0]
         sum_logprobs: Tensor = torch.zeros(n_batch, device=audio_features.device)
         no_speech_probs = [np.nan] * n_batch
-
+        print(f"self.sample_len: {self.sample_len}")
         try:
             for i in range(self.sample_len):
+                print("================================================")
+                print(f"            main loop iteration: {i}           ")
+                print("================================================")
                 logits = self.inference.logits(tokens, audio_features)
 
                 if (
@@ -699,8 +720,12 @@ class DecodingTask:
                 for logit_filter in self.logit_filters:
                     logit_filter.apply(logits, tokens)
 
+                print(f"main loop pass to decoder.update, logits.shape: {logits.shape}, tokens.shape: {tokens.shape}, sum_logprobs.shape: {sum_logprobs.shape}")
                 # expand the tokens tensor with the selected next tokens
                 tokens, completed = self.decoder.update(tokens, logits, sum_logprobs)
+                print("\nAfter beam search - Selected sequences:")
+                for j in range(self.n_group):
+                    print(f"Beam {j+1}: {self.tokenizer.decode(tokens[j].tolist())} (logprob: {sum_logprobs[j]:.2f})")
 
                 if completed or tokens.shape[-1] > self.n_ctx:
                     break
@@ -712,6 +737,7 @@ class DecodingTask:
     @torch.no_grad()
     def run(self, mel: Tensor) -> List[DecodingResult]:
         self.decoder.reset()
+        print("DecodingTask:run, self.decoder", self.decoder)
         tokenizer: Tokenizer = self.tokenizer
         n_audio: int = mel.shape[0]
 
@@ -735,7 +761,17 @@ class DecodingTask:
 
         # call the main sampling loop
         tokens, sum_logprobs, no_speech_probs = self._main_loop(audio_features, tokens)
-
+        print("==========================================")
+        print("\nDecodingTask:output from_main_loop")
+        for i in range(self.n_group):
+            print("--------------------------------")
+            token_meanings = [f"{j+1}{[self.tokenizer.decode([token.item()])]}" 
+                            for j, token in enumerate(tokens[i][:100])]
+            print(f"Sequence {i+1} | "
+                f"Size: {tokens.size()} | "
+                f"\nFirst 100 decoded: {' '.join(token_meanings)} | "
+                f"\nLogprob: {sum_logprobs[i]:.4f}")
+        print("==========================================")
         # reshape the tensors to have (n_audio, n_group) as the first two dimensions
         audio_features = audio_features[:: self.n_group]
         no_speech_probs = no_speech_probs[:: self.n_group]
@@ -746,6 +782,7 @@ class DecodingTask:
 
         # get the final candidates for each group, and slice between the first sampled token and EOT
         tokens, sum_logprobs = self.decoder.finalize(tokens, sum_logprobs)
+
         tokens: List[List[Tensor]] = [
             [t[self.sample_begin : (t == tokenizer.eot).nonzero()[0, 0]] for t in s]
             for s in tokens
@@ -760,7 +797,9 @@ class DecodingTask:
         avg_logprobs: List[float] = [
             lp / (len(t) + 1) for t, lp in zip(tokens, sum_logprobs)
         ]
-
+        print("==========================================")
+        print("DecodingTask:sequence_ranker.rank - sum_logprobs", sum_logprobs)
+        print("==========================================")
         fields = (
             texts,
             languages,
@@ -794,6 +833,7 @@ def decode(
     model: "Whisper",
     mel: Tensor,
     options: DecodingOptions = DecodingOptions(),
+    log_filename: str = "decoding_log.txt",
     **kwargs,
 ) -> Union[DecodingResult, List[DecodingResult]]:
     """
@@ -809,6 +849,9 @@ def decode(
 
     options: DecodingOptions
         A dataclass that contains all necessary options for decoding 30-second segments
+        
+    log_filename: str
+        Path to write the detailed decoding log (default: "decoding_log.txt")
 
     Returns
     -------
@@ -820,7 +863,16 @@ def decode(
 
     if kwargs:
         options = replace(options, **kwargs)
+    with open(log_filename, "w") as f:
+        with contextlib.redirect_stdout(f):
+            print("--------------------------------decoding started\n")
 
-    result = DecodingTask(model, options).run(mel)
+            result = DecodingTask(model, options).run(mel)
+            # Fix: Check if result is a list before printing
+            for i, r in enumerate(result):
+                print(f"Result {i+1}: | avg_logprob: {r.avg_logprob:.2f} | no_speech_prob: {r.no_speech_prob:.2f} \ntext: {r.text} \nlength of text: {len(r.text)}\n")
+            print("--------------------------------decoding finished\n")
 
     return result[0] if single else result
+
+
