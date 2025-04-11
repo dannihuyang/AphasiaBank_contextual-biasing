@@ -3,6 +3,7 @@ import pandas as pd
 import argparse
 import os
 import sys
+import csv
 
 def extract_clean_transcription(utterance):
     """
@@ -23,74 +24,62 @@ def extract_clean_transcription(utterance):
     cleaned = utterance
     
     # STEP 1: Replace all error annotations with their targets
-    # Format: word@u [: target] [* error_type]
     cleaned = re.sub(r'(\w+)@u\s+\[:\s+([^\]]+)\]\s+\[\*\s+[^\]]+\]', r'\2', cleaned)
-    
-    # Format: word [: target] [* error_type]
     cleaned = re.sub(r'(\b\w+\b)\s+\[:\s+([^\]]+)\]\s+\[\*\s+[^\]]+\]', r'\2', cleaned)
-    
-    # Handle special case for neologisms marked as x@n
     cleaned = re.sub(r'\w+\s+\[:\s+x@n\]\s+\[\*\s+[^\]]+\]', '', cleaned)
     
-    # STEP 2: Remove non-linguistic elements
-    # Remove gesture annotations &=gesture
+    # STEP 2: Handle parenthesized text (ENHANCED)
+    cleaned = re.sub(r'\(([^)]*)\)', r'\1', cleaned)
+    
+    # STEP 2.1: Remove CLAN specific notations
     cleaned = re.sub(r'&=[^\s]+', '', cleaned)
-    
-    # Remove sounds and fillers &-sound, &+sound
     cleaned = re.sub(r'&[\-+][^\s]+', '', cleaned)
-    
-    # Remove pause notations (..), (...)
     cleaned = re.sub(r'\([\.]+\)', '', cleaned)
     cleaned = re.sub(r'\(\.\)', '', cleaned)
-    
-    # Remove other annotations like [+ gram], [+ exc], etc.
     cleaned = re.sub(r'\[\+\s*[\w:]+\]', '', cleaned)
     
     # STEP 3: Handle retracing and repetitions
-    # Handle retracing with angle brackets <text> [//]
     previous = ""
     while previous != cleaned:
         previous = cleaned
-        # Remove retraced material (corrections)
         cleaned = re.sub(r'<([^>]+)>\s*\[\/\/\]', '', cleaned)
-    
-    # Handle word-level retracing
     cleaned = re.sub(r'(\b\w+\b)\s*\[\/\/\]', '', cleaned)
     
-    # Handle repetitions <text> [/]
     previous = ""
     while previous != cleaned:
         previous = cleaned
-        # Keep content of repetitions but remove markers
         cleaned = re.sub(r'<([^>]+)>\s*\[\/\]', r'\1', cleaned)
-    
-    # Handle word-level repetitions
     cleaned = re.sub(r'(\b\w+\b)\s*\[\/\]', r'\1', cleaned)
+    cleaned = re.sub(r'<|>', '', cleaned)
     
     # STEP 4: Remove other CLAN notation
-    # Remove discourse markers like ‡
     cleaned = re.sub(r'‡', '', cleaned)
-    
-    # Remove truncation/continuation markers
-    cleaned = re.sub(r'\+\.\.\.', '', cleaned)
+    cleaned = re.sub(r'\+[\.\s]*\.\.', '', cleaned)
+    cleaned = re.sub(r'\+\/\/\.?', '', cleaned)
+    cleaned = re.sub(r'\+\s*\/\/', '', cleaned)
+    cleaned = re.sub(r'\+\s*\.\.', '', cleaned)
+    cleaned = re.sub(r'\+\s*\.\.\.', '', cleaned)
+    cleaned = re.sub(r'\+\/', '', cleaned)
+    cleaned = re.sub(r'\+\s*\/', '', cleaned)
     cleaned = re.sub(r'\+\/\.', '.', cleaned)
     cleaned = re.sub(r'\+\/\?', '?', cleaned)
-    
-    # Handle direct speech notation
-    cleaned = re.sub(r'\+\"', '"', cleaned)
-    cleaned = re.sub(r'\"\\+', '"', cleaned)
+    cleaned = re.sub(r'\s\+\s', ' ', cleaned)
+    cleaned = re.sub(r'^\+\s', '', cleaned)
+    cleaned = re.sub(r'\+\"', '', cleaned)
+    cleaned = re.sub(r'\"\\+', '', cleaned)
+    cleaned = re.sub(r'\"\/\.', '', cleaned)
+    cleaned = re.sub(r'\/\.', '', cleaned)
+    cleaned = re.sub(r'[""]', '', cleaned)
     
     # STEP 5: Remove any remaining angle brackets
     cleaned = re.sub(r'<|>', '', cleaned)
     
     # STEP 6: Clean up final text
-    # Fix spacing around punctuation
     cleaned = re.sub(r'\s+\.', '.', cleaned)
     cleaned = re.sub(r'\s+\,', ',', cleaned)
     cleaned = re.sub(r'\s+\?', '?', cleaned)
     cleaned = re.sub(r'\s+\!', '!', cleaned)
     
-    # Remove consecutive duplicate words (common in transcription)
     words = cleaned.split()
     deduped_words = []
     for i, word in enumerate(words):
@@ -98,9 +87,13 @@ def extract_clean_transcription(utterance):
             deduped_words.append(word)
     
     cleaned = ' '.join(deduped_words)
-    
-    # Remove multiple spaces and trim
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    
+    phonetic_pattern = r'é|æ|ɑ|ɔ|ɕ|ç|ḏ|ḍ|ð|ə|ɚ|ɛ|ɝ|ḡ|ʰ|ḥ|ḫ|ḳ|ḵ|ḷ|ɬ|ɫ|ŋ|ṇ|ɲ|ɴ|ŏ|ɸ|θ|p̅|þ|ɹ|ɾ|ʀ|ʁ|ṛ|š|ś|ṣ|ʃ|ṭ|ṯ|ʨ|tʂ|ʊ|ŭ|ü|ʌ|ɣ|ʍ|χ|ʸ|ʎ|ẓ|ž|ʒ|'"'|'"'|ʔ|ʕ|∬|↫'
+    cleaned = re.sub(phonetic_pattern, '', cleaned)
+    
+    if cleaned.strip() in ['.', '?', '!', ',', '']:
+        cleaned = ''
     
     return cleaned
 
@@ -119,31 +112,25 @@ def process_csv(input_file, output_file=None, utterance_column='utterance', clea
     pandas.DataFrame: DataFrame with cleaned transcriptions
     """
     try:
-        # Read the CSV file
         print(f"Reading CSV file: {input_file}")
-        df = pd.read_csv(input_file)
+        df = pd.read_csv(input_file, engine='python', on_bad_lines='skip')
         
-        # Check if specified utterance column exists
         if utterance_column not in df.columns:
             print(f"Error: CSV file does not have a '{utterance_column}' column")
             print(f"Available columns: {', '.join(df.columns)}")
             return None
         
-        # Create a new column for clean transcriptions
         print(f"Extracting clean transcriptions from '{utterance_column}' column...")
         df[clean_column] = df[utterance_column].apply(extract_clean_transcription)
         
-        # Save to output file
         if not output_file:
-            # Create output filename based on input filename
             base_name = os.path.splitext(input_file)[0]
             output_file = f"{base_name}_clean.csv"
         
         print(f"Saving to {output_file}")
-        df.to_csv(output_file, index=False)
+        df.to_csv(output_file, index=False, quoting=csv.QUOTE_ALL)
         print(f"Processed {len(df)} utterances")
         
-        # Print a few examples
         sample_size = min(5, len(df))
         print(f"\nExample of {sample_size} processed utterances:")
         
@@ -158,21 +145,66 @@ def process_csv(input_file, output_file=None, utterance_column='utterance', clea
         print(f"Error processing CSV: {str(e)}")
         return None
 
+def process_examples(examples):
+    """
+    Process a list of example utterances and return their cleaned versions.
+    Useful for testing the cleaning function.
+    
+    Parameters:
+    examples (list): A list of utterance strings to clean
+    
+    Returns:
+    list: A list of cleaned utterance strings
+    """
+    results = []
+    
+    for example in examples:
+        cleaned = extract_clean_transcription(example)
+        results.append((example, cleaned))
+    
+    for orig, clean in results:
+        print(f"Original: {orig}")
+        print(f"Cleaned : {clean}")
+        print("-" * 50)
+    
+    return results
+
 def main():
-    # Set up argument parser
     parser = argparse.ArgumentParser(description='Clean AphasiaBank transcriptions in a CSV file')
-    parser.add_argument('input_file', help='Path to the input CSV file')
+    parser.add_argument('input_file', nargs='?', default=None,
+                        help='Path to the input CSV file (required unless --test is used)')
     parser.add_argument('--output', '-o', default=None, 
                         help='Path to save the output CSV file (default: input_filename_with_clean.csv in the same directory)')
     parser.add_argument('--column', '-c', default='utterance', 
                         help='Name of the column containing utterances (default: utterance)')
     parser.add_argument('--clean-column', '-n', default='cleaned_utterance',
                         help='Name of the column to store clean transcriptions (default: cleaned_utterance)')
+    parser.add_argument('--test', '-t', action='store_true',
+                        help='Run with test examples instead of processing a file')
     
     args = parser.parse_args()
     
-    # Process the CSV file
-    process_csv(args.input_file, args.output, args.column, args.clean_column)
+    if args.test:
+        test_examples = [
+            "(be)cause <I have just> [//] <I have> [/] I hafta talk.",
+            "if I cant do it I say \"/.",
+            "\" oh I cant get that.",
+            "I went Wyomin(g).",
+            "++ Wyoming.",
+            "(be)cau(se) my sister is over here.",
+            "and I go this way.",
+            "and I woke and I woke up I was like I was like \"/.",
+            "and I was like +//.",
+            "+ what is like a +..?",
+        ]
+        process_examples(test_examples)
+    else:
+        if not args.input_file:
+            print("Error: Input file is required when not using --test mode")
+            parser.print_help()
+            sys.exit(1)
+            
+        process_csv(args.input_file, args.output, args.column, args.clean_column)
 
 if __name__ == "__main__":
     main()
