@@ -10,10 +10,12 @@ venv.bak/
 # Ignore all folders with a specific name (anywhere in the repository)
 **/aphasia/
 venv/
+whisper/
 
 # Ignore specific file types
 *.mp4
 *.cha
 *.mp3
 *.zip
+
 
