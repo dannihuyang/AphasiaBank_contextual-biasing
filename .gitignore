@@ -11,6 +11,9 @@ venv.bak/
 **/aphasia/
 venv/
 whisper/
+run_in_cluster/
+output/
+tokenization/
 
 # Ignore specific file types
 *.mp4

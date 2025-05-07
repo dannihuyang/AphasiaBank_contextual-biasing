@@ -4,6 +4,7 @@ A pipeline for processing, transcribing, and evaluating speech data from the Aph
 
 ## 📂 Project Structure
 
+```
 AphasiaBank_contextual-biasing/
 ├── data/                      # Data directory (mounted in Docker)
 ├── output/                    # Output directory (mounted in Docker)
@@ -15,6 +16,7 @@ AphasiaBank_contextual-biasing/
 ├── evaluate_wer.py            # Evaluate transcription accuracy
 ├── Dockerfile                 # Docker container configuration
 └── run_in_cluster/            # Scripts for running on compute clusters
+```
 
 ## 🔄 Workflow
 
@@ -42,7 +44,7 @@ Extract the audio segments based on timestamps in the CSV:
 python extract_audio_segments.py output/utterances_with_errors.csv /path/to/audio_files --output-dir data/extracted_audio
 ```
 
-### 4️⃣ Create Biasing Lists (Optional)
+### 4️⃣ Create Biasing Lists
 
 Generate word lists for contextual biasing:
 
