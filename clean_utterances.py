@@ -6,9 +6,7 @@ import sys
 import csv
 
 def extract_clean_transcription(utterance):
-    """
-    Extract the clean, intended transcription from an AphasiaBank utterance.
-    
+    """ 
     This function removes all CLAN notation and extracts what the speaker
     intended to say, including replacing error words with their targets.
     
@@ -28,10 +26,8 @@ def extract_clean_transcription(utterance):
     cleaned = re.sub(r'(\b\w+\b)\s+\[:\s+([^\]]+)\]\s+\[\*\s+[^\]]+\]', r'\2', cleaned)
     cleaned = re.sub(r'\w+\s+\[:\s+x@n\]\s+\[\*\s+[^\]]+\]', '', cleaned)
     
-    # STEP 2: Handle parenthesized text (ENHANCED)
+    # STEP 2: Remove CLAN specific notations
     cleaned = re.sub(r'\(([^)]*)\)', r'\1', cleaned)
-    
-    # STEP 2.1: Remove CLAN specific notations
     cleaned = re.sub(r'&=[^\s]+', '', cleaned)
     cleaned = re.sub(r'&[\-+][^\s]+', '', cleaned)
     cleaned = re.sub(r'\([\.]+\)', '', cleaned)
@@ -56,7 +52,6 @@ def extract_clean_transcription(utterance):
     cleaned = re.sub(r'‡', '', cleaned)
     cleaned = re.sub(r'\+[\.\s]*\.\.', '', cleaned)
     cleaned = re.sub(r'\+\/\/\.?', '', cleaned)
-    cleaned = re.sub(r'\+\s*\/\/', '', cleaned)
     cleaned = re.sub(r'\+\s*\.\.', '', cleaned)
     cleaned = re.sub(r'\+\s*\.\.\.', '', cleaned)
     cleaned = re.sub(r'\+\/', '', cleaned)
@@ -70,16 +65,15 @@ def extract_clean_transcription(utterance):
     cleaned = re.sub(r'\"\/\.', '', cleaned)
     cleaned = re.sub(r'\/\.', '', cleaned)
     cleaned = re.sub(r'[""]', '', cleaned)
-    
-    # STEP 5: Remove any remaining angle brackets
     cleaned = re.sub(r'<|>', '', cleaned)
     
-    # STEP 6: Clean up final text
+    # STEP 5: Clean up final text
     cleaned = re.sub(r'\s+\.', '.', cleaned)
     cleaned = re.sub(r'\s+\,', ',', cleaned)
     cleaned = re.sub(r'\s+\?', '?', cleaned)
     cleaned = re.sub(r'\s+\!', '!', cleaned)
     
+    # STEP 6: Remove duplicate words (this step might needs to be omitted to keep the original word order)
     words = cleaned.split()
     deduped_words = []
     for i, word in enumerate(words):
@@ -89,6 +83,7 @@ def extract_clean_transcription(utterance):
     cleaned = ' '.join(deduped_words)
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
     
+    # STEP 7: Remove phonetic characters
     phonetic_pattern = r'é|æ|ɑ|ɔ|ɕ|ç|ḏ|ḍ|ð|ə|ɚ|ɛ|ɝ|ḡ|ʰ|ḥ|ḫ|ḳ|ḵ|ḷ|ɬ|ɫ|ŋ|ṇ|ɲ|ɴ|ŏ|ɸ|θ|p̅|þ|ɹ|ɾ|ʀ|ʁ|ṛ|š|ś|ṣ|ʃ|ṭ|ṯ|ʨ|tʂ|ʊ|ŭ|ü|ʌ|ɣ|ʍ|χ|ʸ|ʎ|ẓ|ž|ʒ|'"'|'"'|ʔ|ʕ|∬|↫'
     cleaned = re.sub(phonetic_pattern, '', cleaned)
     
