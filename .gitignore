@@ -21,4 +21,7 @@ tokenization/
 *.mp3
 *.zip
 
+# Ignore DS_Store
+.DS_Store
+
 
